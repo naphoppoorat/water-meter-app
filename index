@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>บันทึกตำแหน่งมาตรวัดน้ำ</title>
+    <style>
+        body { font-family: sans-serif; background: #f4f6f9; margin: 0; padding: 20px; }
+        .container { max-width: 500px; margin: auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        h2 { color: #0275d8; text-align: center; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="text"] { width: 100%; padding: 10px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 5px; }
+        button { width: 100%; padding: 12px; background: #0275d8; color: white; border: none; border-radius: 5px; font-size: 16px; cursor: pointer; margin-top: 5px; }
+        button:hover { background: #025aa5; }
+        button.secondary { background: #6c757d; }
+        button.secondary:hover { background: #5a6268; }
+        .project-item { padding: 12px; background: #e9ecef; margin-bottom: 8px; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        .project-item:hover { background: #dee2e6; }
+        .hidden { display: none; }
+        .loader { text-align: center; font-style: italic; color: #666; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div id="view-home">
+        <h2>ระบบบันทึกตำแหน่งมาตรวัดน้ำ</h2>
+        <hr>
+        <h3>เลือก Project ที่มีอยู่</h3>
+        <div id="project-list" class="loader">กำลังโหลดข้อมูลโปรเจกต์...</div>
+        
+        <h3 style="margin-top: 30px;">หรือ สร้าง Project ใหม่</h3>
+        <div class="form-group">
+            <input type="text" id="new-project-name" placeholder="ระบุชื่อ Project ใหม่">
+        </div>
+        <button onclick="createProject()">สร้างและเริ่มใช้งาน Project</button>
+    </div>
+
+    <div id="view-record" class="hidden">
+        <h2 id="current-project-title" style="margin-bottom: 5px;"></h2>
+        <button class="secondary" onclick="goHome()" style="margin-bottom: 15px; padding: 6px; font-size: 14px;">⬅ เปลี่ยน Project</button>
+        <hr>
+        
+        <div class="form-group">
+            <label>4. เลขทะเบียนผู้ใช้น้ำ:</label>
+            <input type="text" id="water-id" placeholder="กรอกเลขทะเบียนผู้ใช้น้ำ">
+        </div>
+
+        <div class="form-group">
+            <label>5. พิกัดปัจจุบัน:</label>
+            <button class="secondary" onclick="getLocation()">ค้นหาพิกัดปัจจุบัน</button>
+            <p id="lat-lng-display" style="font-size: 14px; color: #333; margin-top: 8px;">ยังไม่ได้ดึงพิกัด</p>
+        </div>
+
+        <div id="action-buttons" class="hidden">
+            <div class="form-group">
+                <label>6. ยืนยันพิกัดเรียบร้อย</label>
+            </div>
+            <button onclick="saveData()">7. บันทึกข้อมูล</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzV0OLOjRGmh3uZvuDAUnFb9UWnx9vOUZbb5FYcMY_U6JA9RfSvultSgWrYCXFw6cs0/exec'; // ใส่ URL ที่ได้จากการ Deploy Google Apps Script
+    let currentProject = null; // เก็บข้อมูล Project ปัจจุบัน {name, id}
+    let currentLat = null;
+    let currentLng = null;
+
+    // โหลดรายชื่อโปรเจกต์เมื่อเปิดหน้าเว็บ
+    window.onload = function() {
+        fetchProjects();
+    }
+
+    function fetchProjects() {
+        fetch(SCRIPT_URL + '?action=getProjects')
+            .then(response => response.json())
+            .then(data => {
+                const listDiv = document.getElementById('project-list');
+                listDiv.innerHTML = '';
+                if (data.length === 0) {
+                    listDiv.innerHTML = '<p style="color:#666;">ยังไม่มี Project ในระบบ กรุณาสร้างใหม่ด้านล่าง</p>';
+                    return;
+                }
+                data.forEach(proj => {
+                    const div = document.createElement('div');
+                    div.className = 'project-item';
+                    div.innerText = '📁 ' + proj.name;
+                    div.onclick = () => selectProject(proj);
+                    listDiv.appendChild(div);
+                });
+            })
+            .catch(error => {
+                document.getElementById('project-list').innerHTML = '<p style="color:red;">ไม่สามารถโหลดข้อมูลโปรเจกต์ได้</p>';
+            });
+    }
+
+    function selectProject(proj) {
+        currentProject = proj;
+        document.getElementById('current-project-title').innerText = 'Project: ' + proj.name;
+        document.getElementById('view-home').classList.add('hidden');
+        document.getElementById('view-record').classList.remove('hidden');
+        resetForm();
+    }
+
+    function createProject() {
+        const name = document.getElementById('new-project-name').value.trim();
+        if (!name) {
+            alert('กรุณากรอกชื่อ Project');
+            return;
+        }
+        
+        // แสดงสถานะกำลังสร้าง
+        event.target.innerText = 'กำลังสร้าง...';
+        
+        fetch(SCRIPT_URL + `?action=createProject&name=${encodeURIComponent(name)}`)
+            .then(response => response.json())
+            .then(res => {
+                if (res.status === 'success') {
+                    selectProject(res.project);
+                } else {
+                    alert('เกิดข้อผิดพลาดในการสร้างโปรเจกต์');
+                }
+                event.target.innerText = 'สร้างและเริ่มใช้งาน Project';
+            })
+            .catch(error => {
+                alert('เกิดข้อผิดพลาดในการเชื่อมต่อ');
+                event.target.innerText = 'สร้างและเริ่มใช้งาน Project';
+            });
+    }
+
+    // ขั้นตอนที่ 5: ค้นหาพิกัด GPS ปัจจุบันจาก Smart Phone
+    function getLocation() {
+        const display = document.getElementById('lat-lng-display');
+        if (navigator.geolocation) {
+            display.innerText = 'กำลังค้นหาพิกัด...';
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    currentLat = position.coords.latitude;
+                    currentLng = position.coords.longitude;
+                    display.innerHTML = `✅ ละติจูด: <b>${currentLat}</b><br>✅ ลองติจูด: <b>${currentLng}</b>`;
+                    // แสดงปุ่มยืนยันและบันทึก
+                    document.getElementById('action-buttons').classList.remove('hidden');
+                },
+                (error) => {
+                    alert('ไม่สามารถดึงตำแหน่งพิกัดได้ กรุณาเปิด GPS และอนุญาตการเข้าถึงตำแหน่ง');
+                    display.innerText = 'เกิดข้อผิดพลาดในการดึงพิกัด';
+                },
+                { enableHighAccuracy: true }
+            );
+        } else {
+            alert('Browser ของคุณไม่รองรับการระบุตำแหน่ง');
+        }
+    }
+
+    // ขั้นตอนที่ 7 & 8: บันทึกข้อมูลลง Google Sheet
+    function saveData() {
+        const waterId = document.getElementById('water-id').value.trim();
+        if (!waterId) {
+            alert('กรุณากรอกเลขทะเบียนผู้ใช้น้ำก่อน');
+            return;
+        }
+
+        const payload = {
+            spreadsheetId: currentProject.id,
+            waterId: waterId,
+            lat: currentLat,
+            lng: currentLng
+        };
+
+        const saveBtn = event.target;
+        saveBtn.innerText = 'กำลังบันทึก...';
+        saveBtn.disabled = true;
+
+        fetch(SCRIPT_URL, {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        })
+        .then(response => response.json())
+        .then(res => {
+            if (res.status === 'success') {
+                alert('บันทึกข้อมูลสำเร็จ!');
+                resetForm(); // ขั้นตอนที่ 9: วนกลับมาเริ่มต้นกรอกข้อมูลใหม่
+            } else {
+                alert('เกิดข้อผิดพลาดในการบันทึกข้อมูล');
+            }
+            saveBtn.innerText = '7. บันทึกข้อมูล';
+            saveBtn.disabled = false;
+        })
+        .catch(error => {
+            alert('เกิดข้อผิดพลาดในการเชื่อมต่อระบบ');
+            saveBtn.innerText = '7. บันทึกข้อมูล';
+            saveBtn.disabled = false;
+        });
+    }
+
+    function resetForm() {
+        document.getElementById('water-id').value = '';
+        document.getElementById('lat-lng-display').innerText = 'ยังไม่ได้ดึงพิกัด';
+        document.getElementById('action-buttons').classList.add('hidden');
+        currentLat = null;
+        currentLng = null;
+    }
+
+    function goHome() {
+        document.getElementById('view-record').classList.add('hidden');
+        document.getElementById('view-home').classList.remove('hidden');
+        fetchProjects(); // รีเฟรชรายชื่อโปรเจกต์
+    }
+</script>
+
+</body>
+</html>
