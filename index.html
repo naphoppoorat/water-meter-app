@@ -10,7 +10,7 @@
         h2 { color: #0275d8; text-align: center; }
         .form-group { margin-bottom: 15px; }
         label { display: block; margin-bottom: 5px; font-weight: bold; }
-        input[type="text"] { width: 100%; padding: 10px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 5px; }
+        input[type="text"], select { width: 100%; padding: 10px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 5px; font-size: 16px; background-color: #fff; }
         button { width: 100%; padding: 12px; background: #0275d8; color: white; border: none; border-radius: 5px; font-size: 16px; cursor: pointer; margin-top: 5px; }
         button:hover { background: #025aa5; }
         button.secondary { background: #6c757d; }
@@ -24,6 +24,7 @@
 <body>
 
 <div class="container">
+    <!-- หน้าแรก เลือกหรือสร้าง Project -->
     <div id="view-home">
         <h2>ระบบบันทึกตำแหน่งมาตรวัดน้ำ</h2>
         <hr>
@@ -37,6 +38,7 @@
         <button onclick="createProject()">สร้างและเริ่มใช้งาน Project</button>
     </div>
 
+    <!-- หน้าบันทึกข้อมูลมาตรวัดน้ำ -->
     <div id="view-record" class="hidden">
         <h2 id="current-project-title" style="margin-bottom: 5px;"></h2>
         <button class="secondary" onclick="goHome()" style="margin-bottom: 15px; padding: 6px; font-size: 14px;">⬅ เปลี่ยน Project</button>
@@ -45,6 +47,18 @@
         <div class="form-group">
             <label>4. เลขทะเบียนผู้ใช้น้ำ:</label>
             <input type="text" id="water-id" placeholder="กรอกเลขทะเบียนผู้ใช้น้ำ">
+        </div>
+
+        <!-- เพิ่มช่องเลือกขนาดมาตรวัดน้ำ -->
+        <div class="form-group">
+            <label>ขนาดมาตรวัดน้ำ:</label>
+            <select id="meter-size">
+                <option value="1/2 นิ้ว">1/2 นิ้ว</option>
+                <option value="3/4 นิ้ว">3/4 นิ้ว</option>
+                <option value="1 นิ้ว">1 นิ้ว</option>
+                <option value="1.5 นิ้ว">1.5 นิ้ว</option>
+                <option value="2 นิ้ว ขึ้นไป">2 นิ้ว ขึ้นไป</option>
+            </select>
         </div>
 
         <div class="form-group">
@@ -63,12 +77,11 @@
 </div>
 
 <script>
-    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzV0OLOjRGmh3uZvuDAUnFb9UWnx9vOUZbb5FYcMY_U6JA9RfSvultSgWrYCXFw6cs0/exec'; // ใส่ URL ที่ได้จากการ Deploy Google Apps Script
-    let currentProject = null; // เก็บข้อมูล Project ปัจจุบัน {name, id}
+    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzV0OLOjRGmh3uZvuDAUnFb9UWnx9vOUZbb5FYcMY_U6JA9RfSvultSgWrYCXFw6cs0/exec'; // ใส่ URL ของ Apps Script
+    let currentProject = null;
     let currentLat = null;
     let currentLng = null;
 
-    // โหลดรายชื่อโปรเจกต์เมื่อเปิดหน้าเว็บ
     window.onload = function() {
         fetchProjects();
     }
@@ -111,7 +124,6 @@
             return;
         }
         
-        // แสดงสถานะกำลังสร้าง
         event.target.innerText = 'กำลังสร้าง...';
         
         fetch(SCRIPT_URL + `?action=createProject&name=${encodeURIComponent(name)}`)
@@ -130,7 +142,6 @@
             });
     }
 
-    // ขั้นตอนที่ 5: ค้นหาพิกัด GPS ปัจจุบันจาก Smart Phone
     function getLocation() {
         const display = document.getElementById('lat-lng-display');
         if (navigator.geolocation) {
@@ -140,7 +151,6 @@
                     currentLat = position.coords.latitude;
                     currentLng = position.coords.longitude;
                     display.innerHTML = `✅ ละติจูด: <b>${currentLat}</b><br>✅ ลองติจูด: <b>${currentLng}</b>`;
-                    // แสดงปุ่มยืนยันและบันทึก
                     document.getElementById('action-buttons').classList.remove('hidden');
                 },
                 (error) => {
@@ -154,9 +164,10 @@
         }
     }
 
-    // ขั้นตอนที่ 7 & 8: บันทึกข้อมูลลง Google Sheet
     function saveData() {
         const waterId = document.getElementById('water-id').value.trim();
+        const meterSize = document.getElementById('meter-size').value; // ดึงค่าจาก Dropdown
+        
         if (!waterId) {
             alert('กรุณากรอกเลขทะเบียนผู้ใช้น้ำก่อน');
             return;
@@ -165,6 +176,7 @@
         const payload = {
             spreadsheetId: currentProject.id,
             waterId: waterId,
+            meterSize: meterSize,
             lat: currentLat,
             lng: currentLng
         };
@@ -181,7 +193,7 @@
         .then(res => {
             if (res.status === 'success') {
                 alert('บันทึกข้อมูลสำเร็จ!');
-                resetForm(); // ขั้นตอนที่ 9: วนกลับมาเริ่มต้นกรอกข้อมูลใหม่
+                resetForm(); 
             } else {
                 alert('เกิดข้อผิดพลาดในการบันทึกข้อมูล');
             }
@@ -197,6 +209,7 @@
 
     function resetForm() {
         document.getElementById('water-id').value = '';
+        document.getElementById('meter-size').selectedIndex = 0; // รีเซ็ตตัวเลือกขนาดมาตรวัดน้ำกลับมาที่ตัวแรก
         document.getElementById('lat-lng-display').innerText = 'ยังไม่ได้ดึงพิกัด';
         document.getElementById('action-buttons').classList.add('hidden');
         currentLat = null;
@@ -206,7 +219,7 @@
     function goHome() {
         document.getElementById('view-record').classList.add('hidden');
         document.getElementById('view-home').classList.remove('hidden');
-        fetchProjects(); // รีเฟรชรายชื่อโปรเจกต์
+        fetchProjects();
     }
 </script>
 
